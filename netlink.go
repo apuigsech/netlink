@@ -11,7 +11,7 @@ import (
 
 
 var (
-	ErrInvalidSocket = errors.New("invalid socket")
+	ErrInvalidSocket 	= errors.New("invalid socket")
 )
 
 
@@ -40,9 +40,8 @@ func (msg *NetlinkMessage) toWireFormat() ([]byte) {
 }
 
 
-func (msg *NetlinkMessage) Show() {
-	log.Println(msg)
-	//log.Println(msg.toWireFormat())
+func (msg *NetlinkMessage) Show(prefix string) {
+	log.Println(prefix, msg)
 }
 
 
@@ -61,10 +60,8 @@ func OpenLink(NetlinkType int, group int, pid int) (*NetlinkSocket, error) {
 
 	nl.seq = 0
 
-	if err := syscall.Bind(sfd, &nl.lsa); err != nil {
-		syscall.Close(sfd)
-		return nil, err
-	}
+	//TODO: fcntl FD_CLOEXEC
+
 	return nl, nil
 }
 
@@ -77,36 +74,44 @@ func (nl *NetlinkSocket) CloseLink() (error) {
 }
 
 
-func (nl *NetlinkSocket) NewNetlinkMessage(msgtype int, flags int, data []byte) (*NetlinkMessage) {
-	msg := &NetlinkMessage{}
-	msg.Header.Len = syscall.NLMSG_HDRLEN + uint32(len(data))
-	msg.Header.Type = uint16(msgtype)
-	msg.Header.Flags = uint16(flags)
-	msg.Header.Seq = atomic.AddUint32(&nl.seq, 1)
-	msg.Header.Pid = 0
-	msg.Data = data
-	msg.Show()
-	return msg
-}
-
-
-func (nl *NetlinkSocket) SendMessage(msg *NetlinkMessage, flags int) error {
+func (nl *NetlinkSocket) SendMessage(msg *NetlinkMessage, sockflags int, ack bool) error {
 	if nl.sfd <= 0 {
 		return ErrInvalidSocket
 	}
 
-	return syscall.Sendto(nl.sfd, msg.toWireFormat(), flags, &nl.lsa)
+	msg.Header.Len = syscall.NLMSG_HDRLEN + uint32(len(msg.Data))
+	msg.Header.Seq = atomic.AddUint32(&nl.seq, 1)
+
+	if ack == true {
+		msg.Header.Flags = msg.Header.Flags | syscall.NLM_F_ACK
+	}
+
+	msg.Show(">>>")
+
+	err := syscall.Sendto(nl.sfd, msg.toWireFormat(), sockflags, &nl.lsa)
+	if err != nil {
+		return err
+	}
+
+	if ack == true {
+		msgList, err := nl.RecvMessages(0x1000, syscall.O_NONBLOCK)
+		if err != nil || len(msgList) > 1 {
+			return err
+		}
+	}
+
+	return nil
 }
 
 
-func (nl *NetlinkSocket) RecvMessages(sz int, flags int) ([]NetlinkMessage, error) {
+func (nl *NetlinkSocket) RecvMessages(sz int, sockflags int) ([]NetlinkMessage, error) {
 	if nl.sfd <= 0 {
 		return nil,ErrInvalidSocket
 	}
 
 	buf := make([]byte, sz)
 
-	rsz, _, err := syscall.Recvfrom(nl.sfd, buf, flags)
+	rsz, _, err := syscall.Recvfrom(nl.sfd, buf, sockflags)
 	if err != nil {
 		return nil,err
 	}
@@ -124,7 +129,9 @@ func (nl *NetlinkSocket) RecvMessages(sz int, flags int) ([]NetlinkMessage, erro
 	ret := []NetlinkMessage{}
 
 	for _,msg := range msgList {
-		ret = append(ret, NetlinkMessage(msg))
+		msg := NetlinkMessage(msg)
+		msg.Show("<<<")
+		ret = append(ret, msg)
 	}
 
 	return ret, nil

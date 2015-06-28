@@ -1,6 +1,7 @@
 package audit
 
 import (
+	//"log"
 	"syscall"
 	"unsafe"
 	"errors"
@@ -260,6 +261,11 @@ func (rule *AuditRuleData) toWireFormat() []byte {
 }
 
 
+func AuditStatusfromWireFormat(data []byte) (*AuditStatus) {
+	return (*AuditStatus)(unsafe.Pointer(&data[0:32][0]))
+}
+
+
 func (rule *AuditRuleData) SetSyscall(scn int) error {
 	i := uint32(scn / 32)
 	b := 1 << (uint32(scn) - i * 32)
@@ -282,36 +288,74 @@ func OpenLink(group int, pid int) (*AuditNLSocket, error) {
 
 
 func (al *AuditNLSocket) CloseLink() (error) {
-	return (*netlink.NetlinkSocket)(al).CloseLink()
-}
-
-
-func (al *AuditNLSocket) Request(msgtype int, data []byte) error {
 	nl := (*netlink.NetlinkSocket)(al)
-	msg := nl.NewNetlinkMessage(msgtype, syscall.NLM_F_REQUEST | syscall.NLM_F_ACK, data)
-	return nl.SendMessage(msg, 0)
+	return nl.CloseLink()
 }
 
 
-func (al *AuditNLSocket) Reply() ([]netlink.NetlinkMessage, error) {
-	return (*netlink.NetlinkSocket)(al).RecvMessages(MAX_AUDIT_MESSAGE_LENGTH, syscall.MSG_DONTWAIT)
+func (al *AuditNLSocket) Request(msgtype int, flags int, data []byte, sockflags int, ack bool) error {
+	nl := (*netlink.NetlinkSocket)(al)
+
+	msg := &netlink.NetlinkMessage{}
+	msg.Header.Type = uint16(msgtype)
+	msg.Header.Flags = uint16(flags | syscall.NLM_F_REQUEST)
+	msg.Data = data
+
+	return nl.SendMessage(msg, sockflags, ack)
 }
 
+
+func (al *AuditNLSocket) Reply(sockflags int) ([]netlink.NetlinkMessage, error) {
+	nl := (*netlink.NetlinkSocket)(al)
+	return nl.RecvMessages(MAX_AUDIT_MESSAGE_LENGTH, sockflags)
+}
+
+
+func (al *AuditNLSocket) RequestWithReply(msgtype int, flags int, data []byte) ([]netlink.NetlinkMessage, error) {
+	err := al.Request(msgtype, flags, data, 0, false)
+	if err != nil {
+		return []netlink.NetlinkMessage{}, nil
+	}
+
+	for {
+		msgList, err := al.Reply(0)
+		if err != nil {
+			return []netlink.NetlinkMessage{},err
+		}
+		m := msgList[0]
+		if m.Header.Type == uint16(msgtype) {
+			return msgList, nil
+		}
+	}
+}
+
+
+func (al *AuditNLSocket) GetStatus() (*AuditStatus, error) {
+	msgList, err := al.RequestWithReply(AUDIT_GET, 0, []byte(""))
+	if err != nil {
+		return nil,err
+	}
+	m := msgList[0]
+	st := AuditStatusfromWireFormat(m.Data)
+	return st,nil
+}
+
+
+func (al *AuditNLSocket) SetStatus(st *AuditStatus) error {
+	return al.Request(AUDIT_SET, 0, st.toWireFormat(), 0, false)
+}
 
 
 func (al *AuditNLSocket) AddRule(rule *AuditRuleData) error {
-	nl := (*netlink.NetlinkSocket)(al)
-	msg := nl.NewNetlinkMessage(AUDIT_ADD_RULE, syscall.AF_NETLINK, rule.toWireFormat())
-	return nl.SendMessage(msg, 0)
+	return al.Request(AUDIT_ADD_RULE, 0, rule.toWireFormat(), 0, false)
 }
 
 
 
 func (al *AuditNLSocket) DelRule(rule *AuditRuleData) error {
-	nl := (*netlink.NetlinkSocket)(al)
-	msg := nl.NewNetlinkMessage(AUDIT_DEL_RULE, syscall.AF_NETLINK, rule.toWireFormat())
-	return nl.SendMessage(msg, 0)
+	return al.Request(AUDIT_DEL_RULE, 0, rule.toWireFormat(), 0, false)
 }
+
 
 func (al *AuditNLSocket) ListRules() error {
 	return nil
