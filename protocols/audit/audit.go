@@ -260,6 +260,19 @@ func (rule *AuditRuleData) toWireFormat() []byte {
 	return b
 }
 
+// TODO: Function for AuditMessage.
+func ParseAuditMessage(msg string) map[string]string {
+	ret := make(map[string]string)
+	for _,e := range strings.Split(msg, " ") {
+		a := strings.Split(e, "=")
+		log.Println(a)
+		if len(a) == 2 {
+			ret[a[0]] = a[1]
+		}
+	}
+	return ret
+}
+
 
 func AuditStatusfromWireFormat(data []byte) (*AuditStatus) {
 	return (*AuditStatus)(unsafe.Pointer(&data[0:32][0]))
@@ -274,6 +287,28 @@ func (rule *AuditRuleData) SetSyscall(scn int) error {
 	}
 	rule.Mask[i] |= uint32(b)
 	return nil
+}
+
+
+func nlmAlignOf(msglen int) int {
+	return (msglen + syscall.NLMSG_ALIGNTO - 1) & ^(syscall.NLMSG_ALIGNTO - 1)
+}
+
+
+func ParseAuditNetlinkMessage(b []byte) ([]netlink.NetlinkMessage, error) {
+	var msgList []netlink.NetlinkMessage
+
+	h := (*syscall.NlMsghdr)(unsafe.Pointer(&b[0]))
+	if int(h.Len) < syscall.NLMSG_HDRLEN || int(h.Len) > len(b) {
+		return []netlink.NetlinkMessage{}, errors.New("ouf of range")
+	}
+
+	h.Len = uint32(nlmAlignOf(int(h.Len)))
+
+	msg := netlink.NetlinkMessage{Header: *h, Data: b[syscall.NLMSG_HDRLEN:h.Len+syscall.NLMSG_HDRLEN]}
+	msgList = append(msgList, msg)
+
+	return msgList, nil
 }
 
 
@@ -293,6 +328,18 @@ func (al *AuditNLSocket) CloseLink() (error) {
 }
 
 
+func (al *AuditNLSocket) RecvMessages(sz int, sockflags int) ([]netlink.NetlinkMessage, error) {
+	nl := (*netlink.NetlinkSocket)(al)
+
+	buf, err := nl.RecvMessagesRaw(sz, sockflags)
+	if err != nil {
+		return nil,err
+	}
+
+	return ParseAuditNetlinkMessage(buf)
+}
+
+
 func (al *AuditNLSocket) Request(msgtype int, flags int, data []byte, sockflags int, ack bool) error {
 	nl := (*netlink.NetlinkSocket)(al)
 
@@ -306,8 +353,8 @@ func (al *AuditNLSocket) Request(msgtype int, flags int, data []byte, sockflags 
 
 
 func (al *AuditNLSocket) Reply(sockflags int) ([]netlink.NetlinkMessage, error) {
-	nl := (*netlink.NetlinkSocket)(al)
-	return nl.RecvMessages(MAX_AUDIT_MESSAGE_LENGTH, sockflags)
+	//nl := (*netlink.NetlinkSocket)(al)
+	return al.RecvMessages(MAX_AUDIT_MESSAGE_LENGTH, sockflags)
 }
 
 

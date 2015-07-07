@@ -60,8 +60,6 @@ func OpenLink(NetlinkType int, group int, pid int) (*NetlinkSocket, error) {
 
 	nl.seq = 0
 
-	//TODO: fcntl FD_CLOEXEC
-
 	return nl, nil
 }
 
@@ -94,9 +92,10 @@ func (nl *NetlinkSocket) SendMessage(msg *NetlinkMessage, sockflags int, ack boo
 	}
 
 	if ack == true {
-		msgList, err := nl.RecvMessages(0x1000, syscall.O_NONBLOCK)
+		msgList, err := nl.RecvMessages(syscall.Getpagesize(), syscall.O_NONBLOCK)
+
 		if err != nil || len(msgList) > 1 {
-			return err
+			return err //TODO: customize error.
 		}
 	}
 
@@ -120,9 +119,9 @@ func (nl *NetlinkSocket) RecvMessages(sz int, sockflags int) ([]NetlinkMessage, 
 		return nil, syscall.EINVAL
 	}
 
-
 	msgList, err := syscall.ParseNetlinkMessage(buf[:rsz])
 	if err != nil {
+		log.Println(err)
 		return nil,err
 	}
 
@@ -130,9 +129,26 @@ func (nl *NetlinkSocket) RecvMessages(sz int, sockflags int) ([]NetlinkMessage, 
 
 	for _,msg := range msgList {
 		msg := NetlinkMessage(msg)
+		log.Println("SZ", rsz)
 		msg.Show("<<<")
 		ret = append(ret, msg)
 	}
 
 	return ret, nil
+}
+
+
+func (nl *NetlinkSocket) RecvMessagesRaw(sz int, sockflags int) ([]byte, error) {
+	if nl.sfd <= 0 {
+		return nil,ErrInvalidSocket
+	}
+
+	buf := make([]byte, sz)
+
+	rsz, _, err := syscall.Recvfrom(nl.sfd, buf, sockflags)
+	if err != nil {
+		return nil,err
+	}
+
+	return buf[:rsz], nil
 }
