@@ -7,8 +7,9 @@ import (
 	"../protocols/audit"
 )
 
+
+
 func main() {
-	log.Println("getevents example")
 	al,_ := audit.OpenLink(0,0)
 
 	rule := &audit.AuditRuleData {
@@ -23,18 +24,22 @@ func main() {
 
 	st.Mask = audit.AUDIT_STATUS_ENABLED | audit.AUDIT_STATUS_PID
 	st.Enabled = 1
-	st.Failure = 0
 	st.Pid = uint32(os.Getpid())
-	st.Rate_limit = 0
-	st.Backlog_limit = 0
-	st.Lost = 0
-	st.Backlog = 0
+
 
 	al.SetStatus(st); log.Println("  -", st)
 
 	for {
-		al.Reply(0)
+		msgList,_ := al.Reply(0)
+		log.Println("count:", len(msgList))
+		for _,msg := range msgList {
+			if msg.Header.Type == audit.AUDIT_SYSCALL {
+				log.Printf("%s", msg.Data)
+			} else {
+				log.Println(msg)
+			}
+		}
 	}
 
-	//al.DelRule(rule)
+	al.DelRule(rule)
 }
