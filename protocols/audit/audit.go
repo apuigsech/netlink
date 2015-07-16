@@ -3,6 +3,7 @@ package audit
 import (
 	"errors"
 	"strings"
+	"os"
 	"syscall"
 	"unsafe"
 
@@ -127,3 +128,29 @@ func (al *AuditNLSocket) DelRule(rule *AuditRuleData) error {
 func (al *AuditNLSocket) ListRules() error {
 	return nil
 }
+
+func (al *AuditNLSocket) GetAuditEvents(enable bool) error {
+	st,err := al.GetStatus()
+	if err != nil {
+		return err
+	}
+
+	if enable {
+		st.Mask = AUDIT_STATUS_ENABLED | AUDIT_STATUS_PID
+		st.Enabled = 1
+		st.Pid = uint32(os.Getpid())
+	} else {
+		if st.Pid == uint32(os.Getpid()) {
+			st.Pid = 0
+		}
+	}
+
+	err = al.SetStatus(st)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+
