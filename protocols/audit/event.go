@@ -37,7 +37,7 @@ func NewAuditEvent(msg string) (*AuditEvent, error) {
 	
 	info := make(map[string]interface{})
 
-	for _, e := range strings.Split(msg, " ") {
+	for _, e := range strings.Split(data[3], " ") {
 		a := strings.Split(e, "=")
 		if len(a) == 2 {
 			key := a[0]
