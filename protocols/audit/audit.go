@@ -2,7 +2,6 @@ package audit
 
 import (
 	"errors"
-	"strings"
 	"os"
 	"syscall"
 	"unsafe"
@@ -12,17 +11,6 @@ import (
 
 type AuditNLSocket netlink.NetlinkSocket
 
-// TODO: Function for AuditMessage.
-func ParseAuditMessage(msg string) map[string]string {
-	ret := make(map[string]string)
-	for _, e := range strings.Split(msg, " ") {
-		a := strings.Split(e, "=")
-		if len(a) == 2 {
-			ret[a[0]] = a[1]
-		}
-	}
-	return ret
-}
 
 func nlmAlignOf(msglen int) int {
 	return (msglen + syscall.NLMSG_ALIGNTO - 1) & ^(syscall.NLMSG_ALIGNTO - 1)
