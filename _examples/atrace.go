@@ -409,7 +409,22 @@ func Fork() (int, error) {
 
 
 func EventCallback(ae *audit.AuditEvent, ce chan error, args ...interface{}) {
-	fmt.Printf("[%d] %s(%s,%s,%s,%s) = %d\n", *ae.Pid, syscall_resolv[*ae.Syscall], ae.Args[0], ae.Args[1], ae.Args[2], ae.Args[3], *ae.Exit)
+	pid,_ := ae.GetValueInt("pid", 10)
+	syscall,_ := ae.GetValueInt("syscall", 10)
+	a0,_ := ae.GetValueInt("a0", 16)
+	a1,_ := ae.GetValueInt("a1", 16)
+	a2,_ := ae.GetValueInt("a2", 16)
+	a3,_ := ae.GetValueInt("a3", 16)
+	a4,_ := ae.GetValueInt("a4", 16)
+	a5,_ := ae.GetValueInt("a5", 16)
+	exit,_ := ae.GetValueInt("exit", 10)
+
+	//for _,aec := range ae.Chunks {
+	//	fmt.Println(aec.Raw)
+	//}
+
+	fmt.Printf("[ %d ] %s(%x,%x,%x,%x,%x,%x) = %d\n", pid, syscall_resolv[syscall], a0, a1, a2, a3, a4, a5, exit)
+
 }
 
 
