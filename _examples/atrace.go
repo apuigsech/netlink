@@ -8,7 +8,7 @@ import (
 //	"strconv"
 //	"encoding/base64"
 	"errors"
-	"time"
+//	"time"
 //	"crypto/rand"
 	//"github.com/apuigsech/netlink/protocols/audit"
 	audit "../protocols/audit"
@@ -409,8 +409,7 @@ func Fork() (int, error) {
 
 
 func EventCallback(ae *audit.AuditEvent, ce chan error, args ...interface{}) {
-	fmt.Printf("%s(%s,%s,%s,%s) = %d\n", syscall_resolv[*ae.Syscall], ae.Args[0], ae.Args[1], ae.Args[2], ae.Args[3], *ae.Exit)
-
+	fmt.Printf("[%d] %s(%s,%s,%s,%s) = %d\n", *ae.Pid, syscall_resolv[*ae.Syscall], ae.Args[0], ae.Args[1], ae.Args[2], ae.Args[3], *ae.Exit)
 }
 
 
@@ -430,15 +429,10 @@ func main() {
 	}
 
 	if pid == 0 {
-		syscall.Kill(os.Getpid(), syscall.SIGSTOP)
-
+		at.AddProcess(os.Getpid(), scList, false)
 		syscall.Exec(os.Args[1], os.Args[1:], []string{})
+	} else {
+		syscall.Wait4(pid, nil, 0, nil)
+		select{}
 	}
-
-	at.AddProcess(pid, scList, false)
-
-	time.Sleep(1*time.Second)
-	syscall.Kill(pid, syscall.SIGCONT)
-
-	syscall.Wait4(pid, nil, 0, nil)
 }
